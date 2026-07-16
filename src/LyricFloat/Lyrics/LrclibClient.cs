@@ -52,7 +52,7 @@ public sealed class LrclibClient
             {
                 using var req = new HttpRequestMessage(HttpMethod.Head, "https://lrclib.net/");
                 using var resp = await Http.SendAsync(req);
-                Log.Write($"keepalive: {(int)resp.StatusCode}");
+                // success is the normal case - don't spam the log
             }
             catch (Exception ex)
             {

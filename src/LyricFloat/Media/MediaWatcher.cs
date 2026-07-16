@@ -24,6 +24,7 @@ public sealed class MediaWatcher
     public event Action<TimeSpan, DateTimeOffset>? PositionAnchor;
     public event Action<bool>? PlaybackStateChanged;
     public event Action? NoSession;
+    public event Action? SessionAvailable;
 
     public async Task StartAsync()
     {
@@ -68,6 +69,8 @@ public sealed class MediaWatcher
         _session.MediaPropertiesChanged += OnMediaPropertiesChanged;
         _session.PlaybackInfoChanged += OnPlaybackInfoChanged;
         _session.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
+
+        SessionAvailable?.Invoke();
 
         _ = RefreshTrackAsync();
         PushTimeline();

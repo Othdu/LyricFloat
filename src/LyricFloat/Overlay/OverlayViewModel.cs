@@ -31,6 +31,9 @@ public sealed class OverlayViewModel : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>Raised when the highlighted lyric line moves (for animations).</summary>
+    public event Action? ActiveLineAdvanced;
+
     public OverlayViewModel(AppSettings settings)
     {
         _settings = settings;
@@ -95,8 +98,10 @@ public sealed class OverlayViewModel : INotifyPropertyChanged
     public void SetActiveIndex(int index)
     {
         if (_syncType != SyncType.Synced) return;
+        var advanced = index > _activeIndex && _activeIndex >= 0;
         _activeIndex = index;
         RebuildWindow();
+        if (advanced) ActiveLineAdvanced?.Invoke();
     }
 
     public void SetAlbumArt(string? url)

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using LyricFloat.Settings;
 
@@ -38,14 +39,36 @@ public partial class OverlayWindow : Window
         _settings = settings;
         _store = store;
 
+        // Slide-up transition when the active lyric line advances: the fresh
+        // content starts 14px low and eases into place, reading as a smooth
+        // scroll step (SyncEngine raises this on the UI thread already).
+        vm.ActiveLineAdvanced += () =>
+        {
+            if (!_settings.AnimateTransitions) return;
+            var transform = (TranslateTransform)LinesControl.RenderTransform;
+            var slide = new DoubleAnimation(14, 0, TimeSpan.FromMilliseconds(220))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            transform.BeginAnimation(TranslateTransform.YProperty, slide);
+
+            var fade = new DoubleAnimation(0.55, 1.0, TimeSpan.FromMilliseconds(220))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            LinesControl.BeginAnimation(OpacityProperty, fade);
+        };
+
         RestorePosition();
 
-        // Some games re-assert their own z-order; gently re-claim topmost.
-        _topmostWatchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        // Some games re-assert their own z-order; re-claim the top of the
+        // topmost band every second (games like Valorant borderless are
+        // themselves topmost, so plain Topmost=True is not enough).
+        _topmostWatchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _topmostWatchdog.Tick += (_, _) =>
         {
-            if (_handle != IntPtr.Zero)
-                SetWindowPos(_handle, HwndTopmost, 0, 0, 0, 0, SwpNoMoveNoSizeNoActivate);
+            if (_handle == IntPtr.Zero || Visibility != Visibility.Visible) return;
+            SetWindowPos(_handle, HwndTopmost, 0, 0, 0, 0, SwpNoMoveNoSizeNoActivate);
         };
         _topmostWatchdog.Start();
     }

@@ -26,10 +26,15 @@ public partial class SettingsWindow : Window
         AutoStartBox.IsChecked = settings.AutoStart;
         AlbumArtBox.IsChecked = settings.ShowAlbumArt;
         ClientIdBox.Text = settings.SpotifyClientId;
+        AccentBox.Text = settings.AccentColor;
+        AnimateBox.IsChecked = settings.AnimateTransitions;
 
         UpdateConnStatus();
         _spotify.ConnectionChanged += _ => Dispatcher.Invoke(UpdateConnStatus);
     }
+
+    private void OnPresetColor(object sender, RoutedEventArgs e)
+        => AccentBox.Text = (string)((System.Windows.Controls.Button)sender).Tag;
 
     private void UpdateConnStatus()
         => ConnStatus.Text = _spotify.IsConnected ? "Connected \u2713" : "Not connected";
@@ -66,6 +71,11 @@ public partial class SettingsWindow : Window
         _settings.AutoStart = AutoStartBox.IsChecked == true;
         _settings.ShowAlbumArt = AlbumArtBox.IsChecked == true;
         _settings.SpotifyClientId = ClientIdBox.Text.Trim();
+
+        var hex = AccentBox.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(hex))
+            _settings.AccentColor = hex.StartsWith('#') ? hex : "#" + hex;
+        _settings.AnimateTransitions = AnimateBox.IsChecked == true;
 
         _store.Save(_settings);
         try { AutoStartHelper.Apply(_settings.AutoStart); } catch { }

@@ -55,7 +55,10 @@ public sealed class LyricsService
         if (durationSec > 0)
         {
             attempts.Add(Try(() => _client.GetAsync(track.Artist, track.Title, track.Album, durationSec, ct), "get(raw)"));
-            attempts.Add(Try(() => _client.GetAsync(artistNorm, titleNorm, track.Album, durationSec, ct), "get(norm)"));
+            // Only issue the normalized variant when it actually differs -
+            // for clean titles it was a byte-identical duplicate request.
+            if (artistNorm != track.Artist || titleNorm != track.Title)
+                attempts.Add(Try(() => _client.GetAsync(artistNorm, titleNorm, track.Album, durationSec, ct), "get(norm)"));
         }
         attempts.Add(Try(() => _client.SearchBestAsync(artistNorm, titleNorm, durationSec, ct), "search(fields)"));
 

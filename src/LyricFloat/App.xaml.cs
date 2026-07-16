@@ -78,9 +78,18 @@ public partial class App : Application
         {
             _interpolator.SetPlaying(playing);
             _sync.SetPlaying(playing);
+            if (playing) CancelIdleHide();
         });
 
         _watcher.NoSession += () => Dispatcher.Invoke(StartIdleHide);
+
+        // CRITICAL: other apps opening/closing media sessions (browser video,
+        // game launchers, Discord) shuffle the SMTC session list. If Spotify's
+        // session is momentarily unreadable we may schedule an idle-hide - so
+        // the moment a session is (re)attached or playback resumes, cancel it
+        // and bring the panel back. Without this the overlay hides itself and
+        // never returns until the next track change.
+        _watcher.SessionAvailable += () => Dispatcher.Invoke(CancelIdleHide);
 
         // ---- Sync engine -> overlay ----
         _sync.ActiveLineChanged += index => _vm.SetActiveIndex(index);
@@ -101,6 +110,8 @@ public partial class App : Application
 
     private string? _displayedTrackKey;
     private bool _displayedSynced;
+    private string? _fetchingTrackKey;
+    private bool _prefetching;
 
     private async void OnTrackChanged(TrackInfo track)
     {
@@ -117,6 +128,15 @@ public partial class App : Application
             Log.Write("Re-emit for already-synced track -> ignored");
             return;
         }
+
+        // A lookup for this exact track is already in flight: don't double
+        // the request load (it congests slow connections badly).
+        if (trackKey == _fetchingTrackKey)
+        {
+            Log.Write("Lookup already in flight for this track -> ignored");
+            return;
+        }
+        _fetchingTrackKey = trackKey;
 
         var token = Interlocked.Increment(ref _fetchToken);
         _vm.SetTrackLoading(track);
@@ -144,6 +164,29 @@ public partial class App : Application
         _sync.SetLyrics(set);
         _displayedTrackKey = trackKey;
         _displayedSynced = set.Type == SyncType.Synced;
+        _fetchingTrackKey = null;
+
+        // Warm the cache for whatever Spotify says is coming next, so the
+        // next track change shows lyrics instantly even on a slow route.
+        _ = PrefetchUpcomingAsync();
+    }
+
+    private async Task PrefetchUpcomingAsync()
+    {
+        if (_prefetching || !_spotify.IsConnected) return;
+        _prefetching = true;
+        try
+        {
+            var upcoming = await _spotify.GetUpcomingAsync(take: 2);
+            foreach (var next in upcoming)
+            {
+                if (IsAd(next)) continue;
+                Log.Write($"Prefetch: {next.Artist} - {next.Title}");
+                await _lyrics.GetAsync(next);   // sequential - gentle on the link
+            }
+        }
+        catch { }
+        finally { _prefetching = false; }
     }
 
     private static bool IsAd(TrackInfo t) =>
@@ -196,9 +239,18 @@ public partial class App : Application
 
     private void StartIdleHide()
     {
-        // No media session (Spotify closed): hide after 5s of silence.
-        _idleHide ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-        _idleHide.Tick += (_, _) => { _idleHide!.Stop(); _vm.HideForAd(); };
+        // No media session (Spotify closed): hide after 15s of silence.
+        // (Handler attached ONCE - the old += -on-every-call leaked handlers.)
+        if (_idleHide is null)
+        {
+            _idleHide = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+            _idleHide.Tick += (_, _) =>
+            {
+                _idleHide!.Stop();
+                Log.Write("Idle-hide: no media session for 15s -> hiding panel");
+                _vm.HideForAd();
+            };
+        }
         _idleHide.Stop();
         _idleHide.Start();
     }

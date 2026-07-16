@@ -13,6 +13,7 @@ public sealed class AppSettings
     public double FontSize { get; set; } = 17;
     public int LineCount { get; set; } = 3;          // visible lines (odd numbers look best)
     public string AccentColor { get; set; } = "#E7C87A"; // champagne gold
+    public bool AnimateTransitions { get; set; } = true;
 
     // Sync
     public int OffsetMs { get; set; } = 0;

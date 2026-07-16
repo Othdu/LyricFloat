@@ -90,6 +90,55 @@ public sealed class SpotifyEnrichment
         _store.Save(_settings);
     }
 
+    /// <summary>
+    /// Upcoming tracks from the user's Spotify queue (Premium). Used to
+    /// prefetch lyrics into the cache while the current song plays, so
+    /// track changes show lyrics instantly even on slow connections.
+    /// </summary>
+    public async Task<List<TrackInfo>> GetUpcomingAsync(int take = 2)
+    {
+        var result = new List<TrackInfo>();
+        if (_tokens is null) return result;
+        try
+        {
+            if (_tokens.IsExpired)
+            {
+                _tokens = await _auth.RefreshAsync(_settings.SpotifyClientId, _tokens.RefreshToken);
+                if (_tokens is null) return result;
+                PersistRefreshToken();
+            }
+
+            using var req = new HttpRequestMessage(
+                HttpMethod.Get, "https://api.spotify.com/v1/me/player/queue");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _tokens.AccessToken);
+            using var resp = await Http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode) return result;
+
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (!doc.RootElement.TryGetProperty("queue", out var queue)) return result;
+
+            foreach (var item in queue.EnumerateArray())
+            {
+                if (result.Count >= take) break;
+                if (!item.TryGetProperty("name", out var name)) continue;
+
+                var artists = item.TryGetProperty("artists", out var arr)
+                    ? string.Join(", ", arr.EnumerateArray()
+                        .Select(a => a.GetProperty("name").GetString()))
+                    : string.Empty;
+                var album = item.TryGetProperty("album", out var al) &&
+                            al.TryGetProperty("name", out var alName)
+                    ? alName.GetString() ?? string.Empty : string.Empty;
+                var durationMs = item.TryGetProperty("duration_ms", out var d)
+                    ? (int)d.GetInt64() : 0;
+
+                result.Add(new TrackInfo(name.GetString() ?? "", artists, album, durationMs));
+            }
+        }
+        catch { }
+        return result;
+    }
+
     private async Task PollAsync()
     {
         if (_tokens is null) return;

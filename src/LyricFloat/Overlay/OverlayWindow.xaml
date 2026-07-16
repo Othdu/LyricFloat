@@ -35,9 +35,13 @@
             </Border>
 
             <!-- Lyric lines -->
-            <ItemsControl ItemsSource="{Binding Lines}"
+            <ItemsControl x:Name="LinesControl"
+                          ItemsSource="{Binding Lines}"
                           Width="{Binding PanelWidth}"
                           VerticalAlignment="Center">
+                <ItemsControl.RenderTransform>
+                    <TranslateTransform/>
+                </ItemsControl.RenderTransform>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <TextBlock Text="{Binding Text}"
