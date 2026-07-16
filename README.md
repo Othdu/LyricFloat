@@ -34,7 +34,7 @@ The EXE lands in `src/LyricFloat/bin/Release/net8.0-windows10.0.19041.0/win-x64/
 2. Play a song on Spotify. Synced lyrics appear in the floating panel.
 3. **Ctrl+Shift+E** → edit mode: drag to move, scroll wheel to resize width. Press again to lock (clicks pass through).
 4. **Ctrl+Shift+L** → show/hide. **Ctrl+Shift+Up/Down** → nudge sync ±250 ms.
-5. Tray icon → Settings for opacity, font size, line count, auto-start.
+5. **Ctrl+Shift+S** or the tray icon → Settings (opacity, font size, line count, auto-start, Spotify).
 
 > **Gaming tip:** set your game to **Borderless Windowed** (in Valorant:
 > Settings → Video → Display Mode → Windowed Fullscreen). True fullscreen-exclusive
@@ -64,6 +64,29 @@ LyricsService ── SQLite cache ── LRCLIB    │                 OverlayWi
 ```
 
 Full design rationale in [`docs/BUILD-SPEC.md`](docs/BUILD-SPEC.md).
+
+## Reliability notes
+
+- **Slow or flaky connections:** the app warms up the LRCLIB connection at
+  startup and pings it every 3 minutes so lookups don't pay a cold DNS/TLS
+  handshake on every song. Lookups run in parallel and the first successful
+  response wins; the request timeout is 15 s to accommodate high-latency routes.
+- **Track skips:** Spotify updates the Windows media session in stages
+  (title before duration). The watcher waits ~400 ms for metadata to settle,
+  re-emits if the duration corrects itself later, and never clears lyrics
+  that are already displaying correctly.
+- **Caching:** synced/plain lyrics are cached forever; "not found" results
+  expire after 7 days (LRCLIB's database keeps growing). Cache lives at
+  `%APPDATA%\LyricFloat\cache.db` - safe to delete anytime.
+
+## Troubleshooting
+
+- **Debug log:** `%APPDATA%\LyricFloat\debug.log` records every track event,
+  each lyrics lookup step and its timing, and tray/keepalive status.
+- **No lyrics on many songs + timeouts in the log:** your DNS may be slow;
+  try switching to Cloudflare DNS (1.1.1.1) in your adapter settings.
+- **Overlay invisible in a game:** switch the game to Borderless Windowed.
+- **Tray icon missing:** use Ctrl+Shift+S to reach Settings; check the log.
 
 ## Credits
 
