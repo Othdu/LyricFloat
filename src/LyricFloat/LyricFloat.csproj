@@ -9,7 +9,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>LyricFloat</RootNamespace>
     <AssemblyName>LyricFloat</AssemblyName>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Standard build: plain manifest, runs from anywhere.
+         Valorant build (-p:UiAccessBuild=true): uiAccess manifest, must be
+         signed + installed to Program Files via scripts/install-uiaccess.ps1 -->
+    <ApplicationManifest Condition="'$(UiAccessBuild)' != 'true'">app.manifest</ApplicationManifest>
+    <ApplicationManifest Condition="'$(UiAccessBuild)' == 'true'">app-uiaccess.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Version>1.0.0</Version>
   </PropertyGroup>

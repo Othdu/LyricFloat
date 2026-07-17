@@ -99,7 +99,14 @@ public sealed class SpotifyAuth
     {
         using var resp = await Http.PostAsync(
             "https://accounts.spotify.com/api/token", new FormUrlEncodedContent(form), ct);
-        if (!resp.IsSuccessStatusCode) return null;
+
+        // 400/401 = Spotify definitively rejected the grant (revoked/invalid).
+        // Anything else (5xx, gateway trouble) is transient - THROW so callers
+        // retry later instead of treating it as a revoked token.
+        if (resp.StatusCode is System.Net.HttpStatusCode.BadRequest
+                            or System.Net.HttpStatusCode.Unauthorized)
+            return null;
+        resp.EnsureSuccessStatusCode();
 
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
         var root = doc.RootElement;

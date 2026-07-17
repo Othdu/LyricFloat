@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Standard build: works everywhere except Valorant, zero setup.
+      - name: Publish (standard)
+        run: >
+          dotnet publish src/LyricFloat -c Release -r win-x64
+          --self-contained true -p:PublishSingleFile=true
+          -o out/standard
+
+      # Valorant build: uiAccess manifest + local install script.
+      - name: Publish (Valorant / uiAccess)
+        run: >
+          dotnet publish src/LyricFloat -c Release -r win-x64
+          --self-contained true -p:PublishSingleFile=true
+          -p:UiAccessBuild=true -o out/valorant
+
+      - name: Stage release assets
+        shell: pwsh
+        run: |
+          Copy-Item scripts/install-uiaccess.ps1 out/valorant/
+          Copy-Item docs/VALORANT-SETUP.txt out/valorant/README.txt
+          Compress-Archive -Path out/standard/* -DestinationPath "LyricFloat-${{ github.ref_name }}-standard-win-x64.zip"
+          Compress-Archive -Path out/valorant/* -DestinationPath "LyricFloat-${{ github.ref_name }}-valorant-win-x64.zip"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            LyricFloat-*-standard-win-x64.zip
+            LyricFloat-*-valorant-win-x64.zip
+          generate_release_notes: true

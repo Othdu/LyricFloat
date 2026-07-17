@@ -1,0 +1,20 @@
+LyricFloat - Valorant edition setup
+===================================
+
+This build uses Windows' uiAccess privilege so the lyrics stay visible
+over Valorant. Windows requires a one-time install step for that:
+
+  1. Extract this zip anywhere
+  2. Right-click "install-uiaccess.ps1" -> Run with PowerShell
+     (approve the Administrator prompt)
+  3. Launch LyricFloat from the new desktop shortcut
+
+That's it. The script creates a code-signing certificate ON YOUR OWN
+machine, trusts it locally, installs the app to Program Files and signs
+it there. Nothing is downloaded and no external certificate is involved.
+
+Not playing Valorant? Grab the "standard" zip instead - no setup at all,
+just run LyricFloat.exe.
+
+Note: Windows SmartScreen may warn on first run (the app is from a small
+open-source project, not a big publisher). Click "More info" -> "Run anyway".

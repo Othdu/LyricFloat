@@ -171,9 +171,20 @@ public partial class App : Application
         _ = PrefetchUpcomingAsync();
     }
 
+    private bool _prefetchSkipLogged;
+
     private async Task PrefetchUpcomingAsync()
     {
-        if (_prefetching || !_spotify.IsConnected) return;
+        if (!_spotify.IsConnected)
+        {
+            if (!_prefetchSkipLogged)
+            {
+                Log.Write("Prefetch skipped: Spotify not connected");
+                _prefetchSkipLogged = true;
+            }
+            return;
+        }
+        if (_prefetching) return;
         _prefetching = true;
         try
         {

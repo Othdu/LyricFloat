@@ -18,6 +18,7 @@ public partial class OverlayWindow : Window
     private const int WsExNoActivate = 0x08000000;   // never steals game focus
 
     private static readonly IntPtr HwndTopmost = new(-1);
+    private static readonly IntPtr HwndNoTopmost = new(-2);
     private const uint SwpNoMoveNoSizeNoActivate = 0x0001 | 0x0002 | 0x0010;
 
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int index);
@@ -25,6 +26,10 @@ public partial class OverlayWindow : Window
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(
         IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+    private const uint GwOwner = 4;
 
     private readonly AppSettings _settings;
     private readonly SettingsStore _store;
@@ -61,15 +66,13 @@ public partial class OverlayWindow : Window
 
         RestorePosition();
 
-        // Some games re-assert their own z-order; re-claim the top of the
-        // topmost band every second (games like Valorant borderless are
-        // themselves topmost, so plain Topmost=True is not enough).
-        _topmostWatchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _topmostWatchdog.Tick += (_, _) =>
-        {
-            if (_handle == IntPtr.Zero || Visibility != Visibility.Visible) return;
-            SetWindowPos(_handle, HwndTopmost, 0, 0, 0, 0, SwpNoMoveNoSizeNoActivate);
-        };
+        // Valorant borderless is ITSELF an always-on-top window and re-asserts
+        // its z-order aggressively. A plain SetWindowPos(HWND_TOPMOST) on a
+        // window that already has WS_EX_TOPMOST can be a no-op within the
+        // topmost band - so we force a re-insertion at the very top of the
+        // band by dropping topmost and immediately re-claiming it.
+        _topmostWatchdog = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
+        _topmostWatchdog.Tick += (_, _) => ForceTopmost();
         _topmostWatchdog.Start();
     }
 
@@ -88,16 +91,62 @@ public partial class OverlayWindow : Window
         }
     }
 
+    // WinEvent hook: fires the instant ANY window becomes foreground
+    // (game launching, alt-tab) so we re-claim topmost immediately instead
+    // of waiting for the next watchdog tick.
+    private delegate void WinEventDelegate(
+        IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetWinEventHook(
+        uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
+        WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
+    private const uint EventSystemForeground = 0x0003;
+    private const uint WineventOutofcontext = 0x0000;
+    private WinEventDelegate? _foregroundHook;   // keep a reference: GC must not collect it
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
         _handle = new WindowInteropHelper(this).Handle;
+
+        _foregroundHook = (_, _, _, _, _, _, _) => Dispatcher.BeginInvoke(ForceTopmost);
+        SetWinEventHook(EventSystemForeground, EventSystemForeground,
+            IntPtr.Zero, _foregroundHook, 0, 0, WineventOutofcontext);
 
         var style = GetWindowLong(_handle, GwlExStyle);
         SetWindowLong(_handle, GwlExStyle,
             style | WsExLayered | WsExToolWindow | WsExNoActivate);
 
         ApplyClickThrough(true);
+    }
+
+    /// <summary>
+    /// Re-insert this window at the very top of the always-on-top band.
+    /// The NOTOPMOST->TOPMOST cycle is required to climb above other topmost
+    /// windows (games); both calls happen back-to-back without a repaint, so
+    /// there is no visible flicker.
+    /// </summary>
+    public void ForceTopmost()
+    {
+        if (_handle == IntPtr.Zero || Visibility != Visibility.Visible) return;
+
+        // KNOWN WPF BUG (confirmed by Microsoft): with ShowInTaskbar=False,
+        // WPF parents this window to a HIDDEN owner window that never gets
+        // WS_EX_TOPMOST - and Windows z-orders owned windows with their
+        // owner. Aggressive games (Valorant) exploit exactly that handicap.
+        // Fix: force the hidden owner into the topmost band as well.
+        var owner = GetWindow(_handle, GwOwner);
+        if (owner != IntPtr.Zero)
+        {
+            SetWindowPos(owner, HwndNoTopmost, 0, 0, 0, 0, SwpNoMoveNoSizeNoActivate);
+            SetWindowPos(owner, HwndTopmost, 0, 0, 0, 0, SwpNoMoveNoSizeNoActivate);
+        }
+
+        SetWindowPos(_handle, HwndNoTopmost, 0, 0, 0, 0, SwpNoMoveNoSizeNoActivate);
+        SetWindowPos(_handle, HwndTopmost, 0, 0, 0, 0, SwpNoMoveNoSizeNoActivate);
     }
 
     private void ApplyClickThrough(bool enabled)

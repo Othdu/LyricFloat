@@ -45,17 +45,60 @@ public sealed class SpotifyEnrichment
 
     public async Task StartAsync()
     {
-        // Silent reconnect with the stored refresh token.
-        if (!string.IsNullOrWhiteSpace(_settings.SpotifyClientId) &&
-            !string.IsNullOrWhiteSpace(_settings.SpotifyRefreshToken))
+        if (string.IsNullOrWhiteSpace(_settings.SpotifyClientId) ||
+            string.IsNullOrWhiteSpace(_settings.SpotifyRefreshToken))
         {
-            _tokens = await _auth.RefreshAsync(_settings.SpotifyClientId, _settings.SpotifyRefreshToken);
+            Log.Write("Spotify: no stored connection");
+            return;
+        }
+
+        await TrySilentReconnectAsync();
+
+        // Flaky-network resilience: keep retrying the silent reconnect every
+        // 2 minutes until it works. A timeout at launch must never mean
+        // "no Spotify for this whole session".
+        if (_tokens is null)
+        {
+            var retry = new DispatcherTimer { Interval = TimeSpan.FromMinutes(2) };
+            retry.Tick += async (_, _) =>
+            {
+                if (_tokens is not null ||
+                    string.IsNullOrWhiteSpace(_settings.SpotifyRefreshToken))
+                {
+                    retry.Stop();
+                    return;
+                }
+                await TrySilentReconnectAsync();
+                if (_tokens is not null) retry.Stop();
+            };
+            retry.Start();
+        }
+    }
+
+    private async Task TrySilentReconnectAsync()
+    {
+        try
+        {
+            _tokens = await _auth.RefreshAsync(_settings.SpotifyClientId, _settings.SpotifyRefreshToken!);
             if (_tokens is not null)
             {
                 PersistRefreshToken();
                 _timer.Start();
                 ConnectionChanged?.Invoke(true);
+                Log.Write("Spotify: connected (silent reconnect)");
             }
+            else
+            {
+                // Definitive rejection - the token really is dead.
+                Log.Write("Spotify: stored token rejected - reconnect via Settings");
+                _settings.SpotifyRefreshToken = null;
+                _store.Save(_settings);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Network trouble: keep the token, retry later.
+            Log.Write($"Spotify: reconnect failed (network: {ex.Message.Split('(')[0].Trim()}) - will retry");
         }
     }
 
@@ -103,8 +146,11 @@ public sealed class SpotifyEnrichment
         {
             if (_tokens.IsExpired)
             {
-                _tokens = await _auth.RefreshAsync(_settings.SpotifyClientId, _tokens.RefreshToken);
-                if (_tokens is null) return result;
+                SpotifyTokens? refreshed = null;
+                try { refreshed = await _auth.RefreshAsync(_settings.SpotifyClientId, _tokens.RefreshToken); }
+                catch { return result; }   // network hiccup - keep the token
+                if (refreshed is null) return result;
+                _tokens = refreshed;
                 PersistRefreshToken();
             }
 
@@ -147,8 +193,27 @@ public sealed class SpotifyEnrichment
         {
             if (_tokens.IsExpired)
             {
-                _tokens = await _auth.RefreshAsync(_settings.SpotifyClientId, _tokens.RefreshToken);
-                if (_tokens is null) { Disconnect(); return; }
+                SpotifyTokens? refreshed;
+                try
+                {
+                    refreshed = await _auth.RefreshAsync(_settings.SpotifyClientId, _tokens.RefreshToken);
+                }
+                catch
+                {
+                    // Network failure - NOT a revoked token. Keep everything
+                    // and try again on the next poll tick. (A previous version
+                    // called Disconnect() here, which permanently deleted the
+                    // refresh token on any flaky-connection hiccup.)
+                    return;
+                }
+
+                if (refreshed is null)
+                {
+                    Log.Write("Spotify: token rejected during refresh - disconnected");
+                    Disconnect();
+                    return;
+                }
+                _tokens = refreshed;
                 PersistRefreshToken();
             }
 
