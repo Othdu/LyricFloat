@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <!-- uiAccess=true places this app's topmost windows in the privileged
+       accessibility band, ABOVE the normal always-on-top band that games
+       fight over. Windows only honors this when the exe is Authenticode-
+       signed AND runs from a secure path (Program Files) - see
+       scripts/install-uiaccess.ps1 which automates both. -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="true" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>

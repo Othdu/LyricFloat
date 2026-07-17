@@ -17,11 +17,18 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # CRITICAL: each flavor gets its OWN obj/bin cache. With a shared
+      # cache, MSBuild's incremental build reuses the first flavor's exe -
+      # including its embedded manifest - and silently ignores the
+      # UiAccessBuild switch. That shipped a valorant zip without uiAccess.
+
       # Standard build: works everywhere except Valorant, zero setup.
       - name: Publish (standard)
         run: >
           dotnet publish src/LyricFloat -c Release -r win-x64
           --self-contained true -p:PublishSingleFile=true
+          -p:BaseIntermediateOutputPath=obj-standard/
+          -p:BaseOutputPath=bin-standard/
           -o out/standard
 
       # Valorant build: uiAccess manifest + local install script.
@@ -29,16 +36,23 @@ jobs:
         run: >
           dotnet publish src/LyricFloat -c Release -r win-x64
           --self-contained true -p:PublishSingleFile=true
-          -p:UiAccessBuild=true -o out/valorant
+          -p:UiAccessBuild=true
+          -p:BaseIntermediateOutputPath=obj-valorant/
+          -p:BaseOutputPath=bin-valorant/
+          -o out/valorant
 
       - name: Stage release assets
         shell: pwsh
         run: |
-          Copy-Item scripts/install-uiaccess.ps1 out/valorant/
-          Copy-Item docs/VALORANT-SETUP.txt out/valorant/README.txt
-          Compress-Archive -Path out/standard/* -DestinationPath "LyricFloat-${{ github.ref_name }}-standard-win-x64.zip"
-          Compress-Archive -Path out/valorant/* -DestinationPath "LyricFloat-${{ github.ref_name }}-valorant-win-x64.zip"
-
+          # Wrap each build in a LyricFloat/ folder so "Extract Here" on a
+          # Desktop produces one tidy folder instead of loose files.
+          New-Item -ItemType Directory pkg-standard/LyricFloat, pkg-valorant/LyricFloat -Force | Out-Null
+          Move-Item out/standard/* pkg-standard/LyricFloat/
+          Move-Item out/valorant/* pkg-valorant/LyricFloat/
+          Copy-Item scripts/install-uiaccess.ps1 pkg-valorant/LyricFloat/
+          Copy-Item docs/VALORANT-SETUP.txt pkg-valorant/LyricFloat/README.txt
+          Compress-Archive -Path pkg-standard/LyricFloat -DestinationPath "LyricFloat-${{ github.ref_name }}-standard-win-x64.zip"
+          Compress-Archive -Path pkg-valorant/LyricFloat -DestinationPath "LyricFloat-${{ github.ref_name }}-valorant-win-x64.zip"
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:

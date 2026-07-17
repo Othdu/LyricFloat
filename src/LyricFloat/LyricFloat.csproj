@@ -9,13 +9,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>LyricFloat</RootNamespace>
     <AssemblyName>LyricFloat</AssemblyName>
-    <!-- Standard build: plain manifest, runs from anywhere.
-         Valorant build (-p:UiAccessBuild=true): uiAccess manifest, must be
-         signed + installed to Program Files via scripts/install-uiaccess.ps1 -->
-    <ApplicationManifest Condition="'$(UiAccessBuild)' != 'true'">app.manifest</ApplicationManifest>
-    <ApplicationManifest Condition="'$(UiAccessBuild)' == 'true'">app-uiaccess.manifest</ApplicationManifest>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Version>1.0.0</Version>
+    <!-- True single-file output: without this, WPF's native DLLs (wpfgfx,
+         D3DCompiler, PenImc, vcruntime, e_sqlite3...) are left loose next to
+         the exe and scatter everywhere when users extract to the Desktop. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
