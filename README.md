@@ -36,7 +36,7 @@ dotnet publish src/LyricFloat -c Release -r win-x64 --self-contained false -p:Pu
 **3. Install it** — open PowerShell **as Administrator** in the same folder and run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install-uiaccess.ps1
+powershell -ExecutionPolicy Bypass -File ".\RUN THIS WITH POWERSHELL FIRST!!!!!.ps1"
 ```
 
 This installs LyricFloat to Program Files, signs it with a certificate created
